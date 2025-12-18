@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>經典俄羅斯方塊</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1f2937; color: #d1d5db; }
+        .tetris-app { max-width: 1000px; margin: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #tetrisCanvas { border: 6px solid #4b5563; background-color: #000; box-shadow: 0 15px 30px rgba(0,0,0,0.6); border-radius: 12px; }
+        .info-box { background-color: #374151; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; min-width: 150px; }
+        .score-value { font-size: 2.5rem; font-weight: bold; color: #facc15; }
+        .game-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 450px; background-color: #2c3e50; border: 4px solid #3498db; border-radius: 12px; padding: 30px; text-align: center; z-index: 20; }
+        /* 鍵盤按鍵樣式優化 */
+        kbd { 
+            background-color: #4b5563; 
+            border-bottom: 3px solid #1f2937; 
+            border-radius: 4px; 
+            padding: 2px 6px; 
+            font-family: monospace; 
+            font-size: 0.75rem;
+            color: white;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen">
+    <div id="gameApp" class="tetris-app">
+        <h1 class="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-blue-500 p-3 mb-6 uppercase tracking-widest">Tetris</h1>
+        <div class="flex flex-col md:flex-row gap-8 justify-center items-start">
+            <div class="relative">
+                <canvas id="tetrisCanvas"></canvas>
+                <div id="gameMessage" class="game-overlay hidden">
+                    <h2 class="text-3xl font-bold mb-3 text-red-500">遊戲暫停</h2>
+                    <button id="resumeButton" class="w-full py-3 bg-yellow-500 text-white font-bold rounded-lg">繼續遊戲 (P)</button>
+                </div>
+                <div id="gameOverOverlay" class="game-overlay hidden">
+                    <h2 class="text-3xl font-bold mb-3 text-red-600">GAME OVER</h2>
+                    <p class="text-xl mb-4 text-white">最終得分：<span id="finalScoreDisplay" class="font-bold text-yellow-400">0</span></p>
+                    <input type="text" id="playerNameInput" placeholder="請輸入名字" maxlength="10" class="w-full p-3 border-2 border-gray-600 rounded-lg text-center text-xl bg-gray-700 text-white mb-5">
+                    <button id="submitScoreButton" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg shadow-xl">上傳並查看排行</button>
+                </div>
+            </div>
+            
+            <div class="flex flex-col gap-4">
+                <div class="info-box"><h3>時間</h3><div id="timeDisplay" class="score-value text-teal-400">00:00</div></div>
+                <div class="info-box"><h3>分數</h3><div id="scoreDisplay" class="score-value text-yellow-400">0</div></div>
+                <div class="info-box flex flex-col items-center">
+                    <h3 class="mb-2">下一個</h3>
+                    <canvas id="nextPieceCanvas" width="100" height="100" class="bg-gray-800 rounded-md"></canvas>
+                </div>
+                
+                <div class="info-box border-l-5 border-indigo-500">
+                    <h3 class="text-xs font-bold mb-3 text-indigo-300 uppercase tracking-widest">操作指令</h3>
+                    <div class="space-y-2 text-xs text-gray-300">
+                        <div class="flex justify-between items-center"><span>移動</span><span class="flex gap-1"><kbd>←</kbd><kbd>→</kbd></span></div>
+                        <div class="flex justify-between items-center"><span>旋轉</span><kbd>↑</kbd></div>
+                        <div class="flex justify-between items-center"><span>加速</span><kbd>↓</kbd></div>
+                        <div class="flex justify-between items-center"><span>硬降</span><kbd>Space</kbd></div>
+                        <div class="flex justify-between items-center border-t border-gray-600 pt-2 mt-2"><span>暫停</span><kbd>P</kbd></div>
+                    </div>
+                </div>
+
+                <button id="startBtn" class="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg">開始遊戲</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = "<?= scriptUrl ?>";
+        const COLS = 10, ROWS = 20, BLOCK_SIZE = 30;
+        let DROP_DELAY = 1000, level = 1, board = [], score = 0, linesCleared = 0;
+        let isPlaying = false, gameOver = true, animationFrameId, startTime = 0, timeIntervalId, elapsedTimeAtPause = 0;
+        let canvas, ctx, nextCanvas, nextCtx, timeDisplayEl;
+        const COLORS = [null, '#00FFFF', '#FFFF00', '#800080', '#0000FF', '#FFA500', '#008000', '#FF0000'];
+        const PIECES = [[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], [[2,2],[2,2]], [[0,3,0],[3,3,3],[0,0,0]], [[4,0,0],[4,4,4],[0,0,0]], [[0,0,5],[5,5,5],[0,0,0]], [[0,6,6],[6,6,0],[0,0,0]], [[7,7,0],[0,7,7],[0,0,0]]];
+        let currentPiece = { matrix: null, pos: { x: 0, y: 0 }, colorIndex: 0 }, nextPiece = null;
+        let lastTime = 0, dropCounter = 0;
+
+        function createBoard() { return Array.from({ length: ROWS }, () => Array(COLS).fill(0)); }
+        function createPiece() { const index = Math.floor(Math.random() * PIECES.length); return { matrix: JSON.parse(JSON.stringify(PIECES[index])), colorIndex: index + 1 }; }
+        function spawnPiece() { if(!nextPiece) nextPiece = createPiece(); currentPiece.matrix = nextPiece.matrix; currentPiece.colorIndex = nextPiece.colorIndex; currentPiece.pos.x = Math.floor(COLS/2)-Math.floor(currentPiece.matrix[0].length/2); currentPiece.pos.y = 0; nextPiece = createPiece(); drawNextPiece(); return !checkCollision(board, currentPiece); }
+        function checkCollision(b, p) { const m = p.matrix, o = p.pos; for(let y=0; y<m.length; ++y) { for(let x=0; x<m[y].length; ++x) { if(m[y][x] !== 0) { const bX = o.x+x, bY = o.y+y; if(bX<0 || bX>=COLS || bY>=ROWS || (bY>=0 && b[bY][bX]!==0)) return true; } } } return false; }
+        function getGhostRow() { let gY = currentPiece.pos.y; while(!checkCollision(board, {matrix: currentPiece.matrix, pos: {x: currentPiece.pos.x, y: gY+1}})) gY++; return gY; }
+        function rotatePiece() { const m = currentPiece.matrix; for(let y=0; y<m.length; ++y) { for(let x=0; x<y; ++x) [m[x][y], m[y][x]] = [m[y][x], m[x][y]]; } m.forEach(row => row.reverse()); if(checkCollision(board, currentPiece)) { const oX = currentPiece.pos.x; let success = false; for(let off of [1,-1,2,-2]) { currentPiece.pos.x+=off; if(!checkCollision(board, currentPiece)) { success=true; break; } currentPiece.pos.x=oX; } if(!success) for(let i=0; i<3; i++) rotatePiece(); } }
+        function clearLines() { let lines = 0; for(let y=ROWS-1; y>=0; --y) { if(board[y].every(v => v!==0)) { lines++; board.splice(y, 1); board.unshift(Array(COLS).fill(0)); y++; } } if(lines>0) { score += [0, 100, 300, 500, 800][lines] * level; linesCleared += lines; level = Math.floor(linesCleared/10)+1; DROP_DELAY = Math.max(100, 1000-(level-1)*80); updateUI(); } }
+        function mergePiece() { currentPiece.matrix.forEach((row, y) => row.forEach((v, x) => { if(v!==0 && currentPiece.pos.y+y>=0) board[currentPiece.pos.y+y][currentPiece.pos.x+x]=currentPiece.colorIndex; })); clearLines(); if(!spawnPiece()) endGame(); }
+        function softDrop() { currentPiece.pos.y++; if(checkCollision(board, currentPiece)) { currentPiece.pos.y--; mergePiece(); return true; } return false; }
+        function hardDrop() { while(!checkCollision(board, currentPiece)) currentPiece.pos.y++; currentPiece.pos.y--; mergePiece(); }
+        function drawBlock(c, x, y, ci, s=BLOCK_SIZE, isG=false) { if(ci===0) return; c.fillStyle=COLORS[ci]; if(isG){ c.globalAlpha=0.2; c.strokeStyle='#fff'; c.strokeRect(x*s+2,y*s+2,s-4,s-4); c.globalAlpha=1; } else { c.fillRect(x*s,y*s,s,s); c.strokeStyle='#fff'; c.lineWidth=1; c.strokeRect(x*s,y*s,s,s); c.fillStyle='rgba(255,255,255,0.2)'; c.fillRect(x*s,y*s,s,4); } }
+        function drawGame() { ctx.fillStyle='#1a1a1a'; ctx.fillRect(0,0,canvas.width,canvas.height); board.forEach((r,y)=>r.forEach((v,x)=>drawBlock(ctx,x,y,v))); if(currentPiece.matrix){ const gY=getGhostRow(); currentPiece.matrix.forEach((r,y)=>r.forEach((v,x)=>{ if(v!==0){ drawBlock(ctx,currentPiece.pos.x+x,gY+y,currentPiece.colorIndex,BLOCK_SIZE,true); drawBlock(ctx,currentPiece.pos.x+x,currentPiece.pos.y+y,currentPiece.colorIndex); } })); } }
+        function drawNextPiece() { nextCtx.fillStyle='#1a1a1a'; nextCtx.fillRect(0,0,100,100); if(!nextPiece) return; const m=nextPiece.matrix, s=20; const oX=(100-m[0].length*s)/2, oY=(100-m.length*s)/2; m.forEach((r,y)=>r.forEach((v,x)=>{ if(v!==0) drawBlock(nextCtx,(x*s+oX)/s,(y*s+oY)/s,nextPiece.colorIndex,s); })); }
+        function updateTime() { if(!isPlaying) return; const total=Date.now()-startTime+elapsedTimeAtPause; const sec=Math.floor(total/1000); timeDisplayEl.textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`; }
+        function update(t=0) { if(!isPlaying) return; const dt=t-lastTime; lastTime=t; dropCounter+=dt; if(dropCounter>DROP_DELAY){ softDrop(); dropCounter=0; } drawGame(); animationFrameId=requestAnimationFrame(update); }
+        function startGame() { document.getElementById('gameOverOverlay').classList.add('hidden'); board=createBoard(); score=0; level=1; linesCleared=0; DROP_DELAY=1000; updateUI(); elapsedTimeAtPause=0; startTime=Date.now(); if(timeIntervalId) clearInterval(timeIntervalId); timeIntervalId=setInterval(updateTime,1000); spawnPiece(); isPlaying=true; gameOver=false; lastTime=performance.now(); update(); }
+        function togglePause() { if(gameOver) return; isPlaying=!isPlaying; if(!isPlaying){ clearInterval(timeIntervalId); elapsedTimeAtPause+=Date.now()-startTime; document.getElementById('gameMessage').classList.remove('hidden'); } else { startTime=Date.now(); timeIntervalId=setInterval(updateTime,1000); document.getElementById('gameMessage').classList.add('hidden'); lastTime=performance.now(); update(); } }
+        function endGame() { isPlaying=false; gameOver=true; cancelAnimationFrame(animationFrameId); clearInterval(timeIntervalId); document.getElementById('finalScoreDisplay').textContent=score; document.getElementById('gameOverOverlay').classList.remove('hidden'); }
+        function updateUI() { document.getElementById('scoreDisplay').textContent=score; }
+
+        window.onload = () => {
+            canvas=document.getElementById('tetrisCanvas'); nextCanvas=document.getElementById('nextPieceCanvas'); timeDisplayEl=document.getElementById('timeDisplay');
+            canvas.width=COLS*BLOCK_SIZE; canvas.height=ROWS*BLOCK_SIZE; ctx=canvas.getContext('2d'); nextCtx=nextCanvas.getContext('2d');
+            document.getElementById('startBtn').onclick=startGame;
+            document.getElementById('resumeButton').onclick=togglePause;
+            document.getElementById('submitScoreButton').onclick=function(){
+                const name = document.getElementById('playerNameInput').value.trim() || '匿名玩家';
+                this.disabled=true; this.innerText="正在進入英雄榜...";
+                window.top.location.href=`${SCRIPT_URL}?page=leaderboard&name=${encodeURIComponent(name)}&score=${score}&new=1`;
+            };
+            document.addEventListener('keydown', e => {
+                if(['ArrowLeft','ArrowRight','ArrowDown','ArrowUp','Space','KeyP'].includes(e.code)) e.preventDefault();
+                if(e.code==='KeyP') togglePause();
+                if(!isPlaying) return;
+                switch(e.code){
+                    case 'ArrowLeft': currentPiece.pos.x--; if(checkCollision(board,currentPiece)) currentPiece.pos.x++; break;
+                    case 'ArrowRight': currentPiece.pos.x++; if(checkCollision(board,currentPiece)) currentPiece.pos.x--; break;
+                    case 'ArrowDown': softDrop(); break;
+                    case 'ArrowUp': rotatePiece(); break;
+                    case 'Space': hardDrop(); break;
+                }
+                drawGame();
+            });
+            drawGame();
+        };
+    </script>
+</body>
+</html>

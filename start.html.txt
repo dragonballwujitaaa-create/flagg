@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .start-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-6">
+    <div class="start-card p-10 md:p-16 rounded-3xl shadow-2xl text-center max-w-lg w-full">
+        <div class="mb-8 inline-block p-5 bg-indigo-500 rounded-2xl shadow-lg shadow-indigo-500/50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            </svg>
+        </div>
+        <h1 class="text-4xl font-extrabold mb-4 tracking-tight">俄羅斯方塊 <span class="text-indigo-400 text-2xl block mt-2">經典重現</span></h1>
+        <p class="text-gray-400 mb-10 text-lg">準備好挑戰最高分了嗎？</p>
+        <button onclick="goToGame()" class="px-8 py-4 font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all active:scale-95 shadow-xl">
+            開始遊戲
+        </button>
+    </div>
+    <script>
+        function goToGame() {
+            // 動態使用後端注入的 scriptUrl
+            const url = "<?= scriptUrl ?>?page=index";
+            window.top.location.href = url;
+        }
+    </script>
+</body>
+</html>

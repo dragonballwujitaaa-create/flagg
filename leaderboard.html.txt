@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <base target="_top">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .new-entry { background: rgba(16, 185, 129, 0.2); animation: pulse 2s infinite; }
+        @keyframes pulse { 50% { opacity: 0.6; } }
+    </style>
+</head>
+<body class="p-6 md:p-12 min-h-screen flex flex-col items-center">
+    <div class="max-w-2xl w-full">
+        <h1 class="text-5xl font-black text-center mb-10 bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">LEADERBOARD</h1>
+        
+        <div class="glass-card rounded-3xl overflow-hidden shadow-2xl">
+            <div class="grid grid-cols-3 p-5 border-b border-white/10 bg-white/5 font-bold text-gray-400 text-sm">
+                <span>RANK</span><span>PLAYER</span><span class="text-right">SCORE</span>
+            </div>
+            <ul id="rank-list" class="divide-y divide-white/5 text-left">
+                <li class="p-10 text-center text-gray-500">載入中...</li>
+            </ul>
+        </div>
+
+        <button id="backBtn" onclick="saveAndGo()" class="mt-12 px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl w-full flex items-center justify-center gap-3 transition-all shadow-xl">
+            <span id="btnText">再玩一局</span>
+        </button>
+    </div>
+
+    <script id="server-data" type="application/json">
+        <?!= typeof serverData !== 'undefined' ? serverData : '{"data":[]}' ?>
+    </script>
+
+    <script>
+        function render() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const pName = decodeURIComponent(urlParams.get('name') || "");
+                const pScore = parseInt(urlParams.get('score')) || 0;
+                const isNew = urlParams.get('new') === '1';
+
+                const dataContainer = document.getElementById('server-data');
+                const list = document.getElementById('rank-list');
+
+                // 防禦性檢查：如果找不到元素，提早結束避免報錯
+                if (!list || !dataContainer) {
+                    console.error("找不到必要的 DOM 元素");
+                    return;
+                }
+
+                let res = { data: [] };
+                try {
+                    res = JSON.parse(dataContainer.textContent);
+                } catch(e) { 
+                    console.error("JSON 解析失敗", e); 
+                }
+
+                let data = res.data || [];
+
+                if (data.length === 0) {
+                    list.innerHTML = '<li class="p-10 text-center text-gray-500">尚無數據</li>';
+                } else {
+                    list.innerHTML = data.map((s, i) => {
+                        const isJustAdded = isNew && s.username === pName && s.score === pScore;
+                        return `
+                            <li class="grid grid-cols-3 p-5 items-center ${isJustAdded ? 'new-entry' : ''}">
+                                <span class="text-xl ${i<3 ? 'text-yellow-400 font-bold' : 'text-slate-500'}">#${i+1}</span>
+                                <span class="font-bold">${s.username} ${isJustAdded ? '⭐' : ''}</span>
+                                <span class="text-right font-mono text-indigo-300 font-bold">${s.score.toLocaleString()}</span>
+                            </li>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("渲染發生異常:", err);
+                // 最後手段：如果出錯，嘗試把錯誤印在 body 上
+                document.body.insertAdjacentHTML('beforeend', `<div class="p-4 text-red-500 text-center">渲染錯誤: ${err.message}</div>`);
+            }
+        }
+
+        function saveAndGo() {
+            const btn = document.getElementById('backBtn');
+            const btnText = document.getElementById('btnText');
+            if(btn) btn.disabled = true;
+            if(btnText) btnText.innerText = "載入遊戲中...";
+            window.top.location.href = "<?= scriptUrl ?>?page=index";
+        }
+
+        // 使用 DOMContentLoaded 通常比 window.onload 在 GAS 環境下更穩定
+        document.addEventListener('DOMContentLoaded', render);
+    </script>
+</body>
+</html>
